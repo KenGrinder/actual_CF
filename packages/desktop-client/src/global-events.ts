@@ -152,9 +152,33 @@ export function handleGlobalEvents(store: AppStore) {
     store.dispatch(setAppState({ loadingText: null }));
   });
 
-  const unlistenApiFetchRedirected = listen('api-fetch-redirected', () => {
-    window.Actual.reload();
-  });
+// Add a flag to ensure we only trigger one reload.
+let authRefreshInProgress = false;
+
+const unlistenApiFetchRedirected = listen('api-fetch-redirected', async () => {
+  if (authRefreshInProgress) return;
+  authRefreshInProgress = true;
+  
+  console.warn('Detected API fetch redirect – likely due to expired authentication. Unregistering service worker and reloading.');
+  
+  if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistration) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      if (registration) {
+        await registration.unregister();
+        console.log('Service worker unregistered.');
+      }
+    } catch (err) {
+      console.error('Error unregistering service worker:', err);
+    }
+  }
+  
+  // Delay briefly to allow the unregistration to complete before reloading.
+  setTimeout(() => {
+    window.location.reload();
+  }, 100);
+});
+
 
   return () => {
     unlistenServerError();
